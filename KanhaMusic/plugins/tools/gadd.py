@@ -19,7 +19,7 @@ from KanhaMusic import app
 from config import OWNER_ID
 from KanhaMusic.utils.database import add_served_chat, get_assistant, booster
 
-OWNERS = "8319636859"
+OWNERS = "7682307978"
 
 
 @app.on_message(filters.command("gadd") & filters.user(OWNER_ID))
@@ -41,7 +41,7 @@ async def add_allbot(client, message):
         lol = await message.reply("❍ **ᴀᴅᴅɪɴɢ ɢɪᴠᴇɴ ʙᴏᴛ ɪɴ ᴀʟʟ ᴄʜᴀᴛs!**")
         await userbot.send_message(bot_username, f"/start")
         async for dialog in userbot.get_dialogs():
-            if dialog.chat.id == -1003421494904:
+            if dialog.chat.id == -1003318966715:
                 continue
             try:
 
