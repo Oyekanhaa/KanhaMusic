@@ -14,12 +14,12 @@
   "env": {
     "API_ID": {
       "description": "Get this value from https://my.telegram.org",
-      "value": "",
+      "value": "33239398",
       "required": true
     },
     "API_HASH": {
       "description": "Get this value from https://my.telegram.org",
-      "value": "",
+      "value": "096cbde01ae7728ea07802194ed41009",
       "required": true
     },
     "BOT_TOKEN": {
@@ -34,11 +34,11 @@
     },
     "OWNER_ID": {
       "description": "The user id of user whom you would like to add as OWNER.",
-      "value": "",
+      "value": "8617644501",
       "required": true
     },
     "STRING_SESSION": {
-      "description": "A Pyrogram v2 String Session from @StringSesssionGeneratorRobot on Telegram.",
+      "description": "A Pyrogram v2 String Session from @MeowSessionRobot on Telegram.",
       "value": "",
       "required": true
     },
@@ -54,7 +54,7 @@
     },
     "LOGGER_ID": {
       "description": "Your Log Group ID, add your bot and promote as an admin with full rights!. Channel ki id mat daal dena bsdk.",
-      "value": "",
+      "value": "-1004454485434",
       "required": true
     }
   },
