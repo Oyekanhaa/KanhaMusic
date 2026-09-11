@@ -78,7 +78,7 @@
         },
         "START_IMAGES": {
             "description": "Optional list of /start image URLs separated by spaces, commas, or semicolons. A random image is used each time.",
-            "value": "",
+            "value": "https://yukiapi.site/file/6RldzdNt",
             "required": false
         },
         "REPO_IMG_URL": {
