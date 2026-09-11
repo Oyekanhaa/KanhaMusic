@@ -86,6 +86,11 @@
             "value": "https://telegra.ph/file/91533956c91d0fd7c9f20.jpg",
             "required": false
         },
+        "PING_IMG_URL": {
+            "description": "Image URL displayed in the /ping command response.",
+            "value": "https://telegra.ph/file/91533956c91d0fd7c9f20.jpg",
+            "required": false
+        },
         "EFFECT_IDS": {
             "description": "List of Telegram message effect IDs separated by spaces, commas, or semicolons. A random effect is applied when the /start command is used. If unsure, try 5104841245755180586.",
             "value": "",
