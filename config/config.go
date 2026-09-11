@@ -66,7 +66,7 @@ var (
 
 	RepoImage = getEnv(
 		"REPO_IMG_URL",
-		"https://telegra.ph/file/91533956c91d0fd7c9f20.jpg",
+		"https://yukiapi.site/file/6RldzdNt",
 	)
 
 	Port = getEnv("PORT", "8000")
