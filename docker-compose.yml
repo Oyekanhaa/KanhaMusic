@@ -1,0 +1,9 @@
+services:
+  kanhamusic:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kanhamusic
+    env_file:
+      - .env
+    restart: unless-stopped
