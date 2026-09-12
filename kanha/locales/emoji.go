@@ -54,7 +54,7 @@ var emojiTokens = map[string]string{
 	"{emoji:🍃}":    "",
 	"{emoji:🎙️}":   "",
 	"{emoji:🎧}":    "",
-	"{emoji:🎵}":    "",
+	"{emoji:🎵}":    "5359529383319084413",
 	"{emoji:🎶}":    "",
 	"{emoji:🏃‍♂️}": "",
 	"{emoji:🏓}":    "",
