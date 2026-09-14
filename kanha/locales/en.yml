@@ -834,7 +834,7 @@ autoplay_menu: |
 
   <b>sᴛᴧᴛᴜs:</b> {state}
 
-autoplay_btn: "🔁 ᴧᴜᴛσᴘʟᴧʏ: {state}"
+autoplay_btn: "♫ ᴧᴜᴛσᴘʟᴧʏ: {state}"
 
 autoplay_enabled: "{emoji:✅} ᴧᴜᴛσᴘʟᴧʏ єηᴧʙʟєᴅ!"
 
