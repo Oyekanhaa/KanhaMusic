@@ -227,6 +227,16 @@ func GetPlayMarkup(chatID int64, r *RoomState, queued bool) td.ReplyMarkup {
 		DataBtn("𝟣𝟧ˢ+", prefix+"seek_15"),
 	})
 
+	autoplayState := "disabled"
+	if r.Autoplay() {
+		autoplayState = "enabled"
+	}
+	rows = append(rows, []td.InlineKeyboardButton{
+		DataBtn(F(chatID, "autoplay_btn", locales.Arg{
+			"state": F(chatID, autoplayState),
+		}), prefix+"autoplay_toggle"),
+	})
+
 	rows = append(rows, []td.InlineKeyboardButton{
 		DataBtn(F(chatID, "CLOSE_BTN"), "close"),
 	})
