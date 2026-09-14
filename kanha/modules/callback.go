@@ -118,6 +118,8 @@ func roomHandle(c *td.Client, u *td.UpdateNewCallbackQuery) error {
 		return handleMuteAction(c, u, r)
 	case action == "unmute":
 		return handleUnmuteAction(c, u, r)
+	case action == "autoplay_toggle":
+		return handleAutoplayToggleAction(c, u, r)
 	default:
 		logger.Warnf("Unknown callback action: %s", action)
 		u.Answer(c, 0, true, F(chatID, "unknown_action"), "")
@@ -425,6 +427,25 @@ func handleUnmuteAction(c *td.Client, u *td.UpdateNewCallbackQuery, r *core.Room
 
 	u.Answer(c, 0, true, F(chatID, "cb_unmute_success"), "")
 	updatePlaybackMessage(c, u, r, "playing")
+	return nil
+}
+
+func handleAutoplayToggleAction(c *td.Client, u *td.UpdateNewCallbackQuery, r *core.RoomState) error {
+	chatID := u.ChatId
+
+	enabled := !r.Autoplay()
+	r.SetAutoplay(enabled)
+
+	statusKey := "autoplay_disabled"
+	if enabled {
+		statusKey = "autoplay_enabled"
+	}
+	u.Answer(c, 0, false, F(chatID, statusKey), "")
+
+	markup := core.GetPlayMarkup(chatID, r, false)
+	if _, err := u.EditMessageReplyMarkup(c, markup); err != nil {
+		logger.Errorf("Autoplay toggle markup edit error: %v", err)
+	}
 	return nil
 }
 
