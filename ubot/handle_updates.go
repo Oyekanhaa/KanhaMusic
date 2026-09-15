@@ -356,6 +356,10 @@ func (ctx *Context) handleUpdates() {
 					delete(ctx.inputGroupCalls, chatID)
 					ctx.inputGroupCallsMutex.Unlock()
 					ctx.binding.Stop(chatID)
+					// Telegram tore down the call itself — tell listeners
+					// (e.g. the music room state) so they don't keep
+					// thinking playback is still active.
+					go ctx.fireCallDiscarded(chatID)
 					return nil
 				}
 			}
