@@ -46,10 +46,11 @@ type Context struct {
 	waitConnectMutex sync.RWMutex
 	waitConnect      map[int64]chan error
 
-	callbacksMutex        sync.RWMutex
-	incomingCallCallbacks []func(client *Context, chatId int64)
-	streamEndCallbacks    []ntgcalls.StreamEndCallback
-	frameCallbacks        []ntgcalls.FrameCallback
+	callbacksMutex         sync.RWMutex
+	incomingCallCallbacks  []func(client *Context, chatId int64)
+	streamEndCallbacks     []ntgcalls.StreamEndCallback
+	frameCallbacks         []ntgcalls.FrameCallback
+	callDiscardedCallbacks []func(chatID int64)
 }
 
 func NewContext(app *tg.Client) *Context {
@@ -198,6 +199,27 @@ func (ctx *Context) OnStreamEnd(callback ntgcalls.StreamEndCallback) {
 	ctx.callbacksMutex.Lock()
 	defer ctx.callbacksMutex.Unlock()
 	ctx.streamEndCallbacks = append(ctx.streamEndCallbacks, callback)
+}
+
+// OnCallDiscarded registers a callback fired when Telegram tears down the
+// group call itself (e.g. the voice chat is ended), as opposed to our own
+// stream simply finishing. Callers should use this to reconcile any
+// higher-level "room" state, since the native call is gone at this point.
+func (ctx *Context) OnCallDiscarded(callback func(chatID int64)) {
+	ctx.callbacksMutex.Lock()
+	defer ctx.callbacksMutex.Unlock()
+	ctx.callDiscardedCallbacks = append(ctx.callDiscardedCallbacks, callback)
+}
+
+func (ctx *Context) fireCallDiscarded(chatID int64) {
+	ctx.callbacksMutex.RLock()
+	callbacks := make([]func(chatID int64), len(ctx.callDiscardedCallbacks))
+	copy(callbacks, ctx.callDiscardedCallbacks)
+	ctx.callbacksMutex.RUnlock()
+
+	for _, cb := range callbacks {
+		cb(chatID)
+	}
 }
 
 func (ctx *Context) OnFrame(callback ntgcalls.FrameCallback) {
