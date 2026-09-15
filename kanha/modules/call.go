@@ -30,6 +30,28 @@ import (
 	"KanhaMusic/ntgcalls"
 )
 
+// callDiscardedHandler fires when Telegram tears down the group call itself
+// (voice chat ended/kicked/etc.), as opposed to our own stream just finishing.
+// The native ntgcalls call is already gone at this point, so the room's
+// "playing" state must be reconciled here — otherwise commands like /seek
+// keep trying to talk to a call that no longer exists.
+func callDiscardedHandler(chatID int64) {
+	r, ok := core.RoomFor(chatID)
+	if !ok {
+		return
+	}
+
+	logger.Debugf("[callDiscardedHandler] Group call discarded in chat %d", chatID)
+
+	scheduleOldPlayingMessage(r)
+	cid := r.ChatID
+	core.DropRoom(chatID)
+
+	if _, err := core.Bot.SendTextMessage(cid, F(cid, "call_discarded"), nil); err != nil {
+		logger.Error(err)
+	}
+}
+
 func streamEndHandler(
 	chatID int64,
 	streamType ntgcalls.StreamType,
