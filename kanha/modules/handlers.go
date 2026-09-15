@@ -211,6 +211,7 @@ func Init(bot *td.Client, assistants *core.AssistantManager) {
 
 	assistants.ForEach(func(a *core.Assistant) {
 		a.Ntg.OnStreamEnd(streamEndHandler)
+		a.Ntg.OnCallDiscarded(callDiscardedHandler)
 	})
 
 	go MonitorRooms()
