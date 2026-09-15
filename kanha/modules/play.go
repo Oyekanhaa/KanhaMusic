@@ -1038,6 +1038,10 @@ func PickAutoplayTrack(r *core.RoomState, last *state.Track) *state.Track {
 	chosen := candidates[0]
 	if len(unplayed) > 0 {
 		chosen = unplayed[rand.Intn(len(unplayed))]
+	} else {
+		// All candidates are already in recent history — instead of blindly
+		// repeating candidates[0], pick whichever was played longest ago.
+		chosen = oldestPlayedCandidate(candidates, history)
 	}
 
 	token := r.AutoplayToken()
@@ -1052,4 +1056,45 @@ func PickAutoplayTrack(r *core.RoomState, last *state.Track) *state.Track {
 
 func pickAutoplayTrack(r *core.RoomState, last *state.Track) *state.Track {
 	return PickAutoplayTrack(r, last)
+}
+
+// oldestPlayedCandidate returns whichever candidate's most recent appearance
+// in history is furthest back (or never appears at all), minimizing the
+// chance of an immediate repeat when every candidate has already been played.
+func oldestPlayedCandidate(candidates []*state.Track, history []string) *state.Track {
+	chosen := candidates[0]
+	bestIdx := lastSeenIndex(chosen, history)
+
+	for _, t := range candidates[1:] {
+		if t == nil || t.ID == "" {
+			continue
+		}
+		idx := lastSeenIndex(t, history)
+		if idx < bestIdx {
+			bestIdx = idx
+			chosen = t
+		}
+	}
+	return chosen
+}
+
+// lastSeenIndex returns the highest index in history at which the track's ID
+// or normalized title appears, or -1 if it never appears.
+func lastSeenIndex(t *state.Track, history []string) int {
+	if t == nil {
+		return -1
+	}
+	targetID := "id:" + t.ID
+	var targetTitle string
+	if norm := state.NormalizeTrackTitle(t.Title); norm != "" {
+		targetTitle = "title:" + norm
+	}
+
+	idx := -1
+	for i, item := range history {
+		if (t.ID != "" && item == targetID) || (targetTitle != "" && item == targetTitle) {
+			idx = i
+		}
+	}
+	return idx
 }
