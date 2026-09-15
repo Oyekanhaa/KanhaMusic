@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"KanhaMusic/kanha/logger"
@@ -28,6 +29,20 @@ import (
 	state "KanhaMusic/kanha/core/models"
 	"KanhaMusic/ntgcalls"
 )
+
+// isCallGoneErr reports whether err indicates the underlying native call no
+// longer exists (e.g. the voice chat was ended/discarded on Telegram's side
+// but we hadn't yet reconciled our local room state). In that case retrying
+// the operation, or trusting Active()/cached flags, will just fail again.
+func isCallGoneErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "call not found") ||
+		strings.Contains(msg, "no call")
+}
 
 const (
 	minSpeed         = 0.50
@@ -262,6 +277,14 @@ func (r *RoomState) Seek(seconds int) error {
 		r.muted = snapshot.muted
 		r.updatedAt = snapshot.updated
 		r.mu.Unlock()
+
+		if isCallGoneErr(err) {
+			// The native call is already gone (voice chat ended). Drop the
+			// room now instead of leaving it "active" so the next command
+			// doesn't keep retrying against a dead call.
+			DropRoom(r.ID)
+			return fmt.Errorf("the voice chat has ended")
+		}
 		return err
 	}
 
@@ -314,6 +337,10 @@ func (r *RoomState) SetSpeed(speed float64) error {
 
 	err := r.play()
 	if err != nil {
+		if isCallGoneErr(err) {
+			DropRoom(r.ID)
+			return fmt.Errorf("the voice chat has ended")
+		}
 		return err
 	}
 
