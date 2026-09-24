@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"KanhaMusic/kanha/logger"
 
@@ -29,6 +30,13 @@ import (
 
 	"KanhaMusic/config"
 	state "KanhaMusic/kanha/core/models"
+)
+
+// Download timeouts, mirrored from the upstream Python client: audio pulls
+// are small enough to finish quickly, video needs more headroom.
+const (
+	audioDownloadTimeout = 300 * time.Second
+	videoDownloadTimeout = 600 * time.Second
 )
 
 const PlatformMeowApi state.PlatformName = "MeowApi"
@@ -73,10 +81,15 @@ func (m *MeowApiPlatform) Download(
 		return "", errors.New("meowapi: missing video id")
 	}
 
-	dtype, quality, ext := "audio", "128", ".mp3"
+	dtype, quality, ext, timeout := "audio", "128", ".mp3", audioDownloadTimeout
 	if track.Video {
-		dtype, quality, ext = "video", "480", ".mp4"
+		dtype, quality, ext, timeout = "video", "480", ".mp4", videoDownloadTimeout
 	}
+
+	// Per-download deadline instead of the shared client's default timeout —
+	// a full audio/video stream can easily outrun the registry's baseline.
+	dctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	path := getPath(track, ext)
 
@@ -86,7 +99,7 @@ func (m *MeowApiPlatform) Download(
 	)
 
 	r, err := rc.R().
-		SetContext(ctx).
+		SetContext(dctx).
 		SetResponseSaveFileName(path).
 		Get(streamURL)
 	if err != nil {
