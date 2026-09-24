@@ -32,23 +32,15 @@ import (
 	state "KanhaMusic/kanha/core/models"
 )
 
-// Download timeouts, mirrored from the upstream Python client: audio pulls
-// are small enough to finish quickly, video needs more headroom.
 const (
 	audioDownloadTimeout = 300 * time.Second
 	videoDownloadTimeout = 600 * time.Second
 
-	// minValidDownloadBytes matches the upstream Python client's floor for
-	// telling a real media file apart from a short error response.
 	minValidDownloadBytes = 10_000
 )
 
 const PlatformMeowApi state.PlatformName = "MeowApi"
 
-// MeowApiPlatform is a download-only backend that streams YouTube audio/video
-// through the Meow API (`/stream/{video_id}?key=...&type=...&quality=...`).
-// It does not resolve search queries or URLs itself; it only downloads
-// tracks that some other platform (YouTube) has already resolved.
 type MeowApiPlatform struct{}
 
 func init() {
@@ -90,8 +82,6 @@ func (m *MeowApiPlatform) Download(
 		dtype, quality, ext, timeout = "video", "480", ".mp4", videoDownloadTimeout
 	}
 
-	// Per-download deadline instead of the shared client's default timeout —
-	// a full audio/video stream can easily outrun the registry's baseline.
 	dctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -124,9 +114,6 @@ func (m *MeowApiPlatform) Download(
 		), config.MeowAPIKey)
 	}
 
-	// A 200 with a tiny body is almost always an error payload (JSON/HTML)
-	// rather than real media — reject it instead of handing a corrupt file
-	// to the caller, mirroring the upstream client's size floor.
 	info, statErr := os.Stat(path)
 	if statErr != nil || info.Size() < minValidDownloadBytes {
 		os.Remove(path)
