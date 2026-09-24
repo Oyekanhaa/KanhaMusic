@@ -33,6 +33,7 @@ import (
 
 	state "KanhaMusic/kanha/core/models"
 	"KanhaMusic/kanha/utils"
+	"KanhaMusic/config"
 )
 
 type reg struct {
@@ -310,3 +311,26 @@ func combineErrs(prefix string, errs []string) error {
 	}
 	return errors.New(prefix + "\n• " + strings.Join(errs, "\n• "))
 }
+
+func GetYouTubeMixPlaylist(_ context.Context, playlistID string) ([]*state.Track, error) {
+	ytRaw, ok := GetPlatform(PlatformYouTube)
+	if !ok {
+		return nil, errors.New("youtube platform not registered")
+	}
+	yt := ytRaw.(*YouTubePlatform)
+	limit := config.QueueLimit
+	if limit <= 0 {
+		limit = 15
+	}
+	return yt.fetchMixPlaylist(playlistID, limit)
+}
+
+func SearchTracks(query string, video bool) ([]*state.Track, error) {
+	ytRaw, ok := GetPlatform(PlatformYouTube)
+	if !ok {
+		return nil, errors.New("youtube platform not registered")
+	}
+	yt := ytRaw.(*YouTubePlatform)
+	return yt.VideoSearch(query)
+}
+

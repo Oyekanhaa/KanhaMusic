@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -1002,55 +1001,22 @@ func autoplayMenu(chatID int64, enabled bool) (string, *td.ReplyMarkupInlineKeyb
 }
 
 // PickAutoplayTrack resolves a non-repeating recommended track to keep playback going.
-// It deeply couples room playback history, platform recommendation trees, and session token verification.
+// It uses YouTube Official Radio Mix, smart search fallback, and golden-zone hit matching.
 func PickAutoplayTrack(r *core.RoomState, last *state.Track) *state.Track {
 	if r == nil || last == nil || !r.Autoplay() {
 		return nil
 	}
 
-	limit := config.QueueLimit
-	if limit <= 0 {
-		limit = 10
-	}
-
-	history := r.PlayedHistory()
-	candidates, err := platforms.AutoplayTracks(last, limit, history...)
-	if err != nil || len(candidates) == 0 {
-		logger.Warnf(
-			"[autoplay] no recommendations for %s: %v",
-			last.ID,
-			err,
-		)
-		return nil
-	}
-
-	// Filter candidates against room history ring buffer
-	var unplayed []*state.Track
-	for _, t := range candidates {
-		if t == nil || t.ID == "" || t.ID == last.ID {
-			continue
+	chosen := pickAutoplayCandidate(r.ChatID, last)
+	if chosen != nil {
+		token := r.AutoplayToken()
+		requester := F(r.ChatID, "autoplay_requester")
+		if requester == "" || strings.HasPrefix(requester, "[") {
+			requester = "🎵 ᴀᴜᴛᴏᴘʟᴀʏ"
 		}
-		if !r.HasPlayed(t.ID, t.Title) {
-			unplayed = append(unplayed, t)
-		}
+		chosen.MarkAutoplay(requester, token)
+		r.AddPlayed(chosen)
 	}
-
-	chosen := candidates[0]
-	if len(unplayed) > 0 {
-		chosen = unplayed[rand.Intn(len(unplayed))]
-	} else {
-		// All candidates are already in recent history — instead of blindly
-		// repeating candidates[0], pick whichever was played longest ago.
-		chosen = oldestPlayedCandidate(candidates, history)
-	}
-
-	token := r.AutoplayToken()
-	requester := F(r.ChatID, "autoplay_requester")
-	chosen.MarkAutoplay(requester, token)
-
-	// Record chosen track into room history ring buffer
-	r.AddPlayed(chosen)
-
 	return chosen
 }
 

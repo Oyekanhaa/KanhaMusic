@@ -19,6 +19,12 @@ package modules
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
+	"math/big"
+	"strings"
+	"sync"
+	"time"
 
 	"KanhaMusic/kanha/logger"
 
@@ -29,6 +35,40 @@ import (
 	"KanhaMusic/kanha/utils"
 	"KanhaMusic/ntgcalls"
 )
+
+// ── In-Memory Fast Anti-Repeat Autoplay History ───────────────────────────────
+var autoplayHistory sync.Map // map[int64]*sync.Map (chatID -> videoID -> time.Time)
+
+func getChatHistoryMap(chatID int64) *sync.Map {
+	val, ok := autoplayHistory.Load(chatID)
+	if !ok {
+		m := &sync.Map{}
+		autoplayHistory.Store(chatID, m)
+		return m
+	}
+	return val.(*sync.Map)
+}
+
+func apMarkPlayed(chatID int64, videoID string) {
+	if videoID == "" {
+		return
+	}
+	m := getChatHistoryMap(chatID)
+	m.Store(videoID, time.Now())
+}
+
+func apIsPlayed(chatID int64, videoID string) bool {
+	if videoID == "" {
+		return false
+	}
+	m := getChatHistoryMap(chatID)
+	_, exists := m.Load(videoID)
+	return exists
+}
+
+func apClearChat(chatID int64) {
+	autoplayHistory.Delete(chatID)
+}
 
 // callDiscardedHandler fires when Telegram tears down the group call itself
 // (voice chat ended/kicked/etc.), as opposed to our own stream just finishing.
@@ -45,6 +85,7 @@ func callDiscardedHandler(chatID int64) {
 
 	scheduleOldPlayingMessage(r)
 	cid := r.ChatID
+	apClearChat(chatID)
 	core.DropRoom(chatID)
 
 	if _, err := core.Bot.SendTextMessage(cid, F(cid, "call_discarded"), nil); err != nil {
@@ -73,32 +114,36 @@ func streamEndHandler(
 	cid := r.ChatID
 	r.Parse()
 
+	prevTrack := r.Track()
+
 	var t *state.Track
 	var wasLooping bool
-	if len(r.Queue()) == 0 && r.Loop() == 0 {
-		if autoplay := pickAutoplayTrack(r, r.Track()); autoplay != nil {
-			r.AddTracks([]*state.Track{autoplay})
-		}
+	var isAutoplay bool
 
-		if len(r.Queue()) == 0 {
+	t = r.NextTrack()
+	if t == nil {
+		t = tryAutoplay(chatID, r)
+		if t == nil {
+			apClearChat(chatID)
 			core.DropRoom(chatID)
 			if _, err := c.SendTextMessage(cid, F(cid, "stream_queue_finished"), nil); err != nil {
 				logger.Error(err)
 			}
 			return
 		}
+		t.Requester = "🎵 ᴀᴜᴛᴏᴘʟᴀʏ"
+		isAutoplay = true
+	} else if prevTrack != nil && t == prevTrack {
+		wasLooping = true
 	}
 
-	wasLooping = r.Loop() > 0
-	t = r.NextTrack()
-
 	statusText := F(cid, "stream_downloading_next")
-	if wasLooping && t != nil && r.FilePath() != "" {
-		statusText = F(cid, "cb_replaying")
-	} else if t != nil && (t.IsAutoplay || t.Requester == F(cid, "autoplay_requester")) {
+	if isAutoplay {
 		statusText = F(cid, "stream_autoplay_next", locales.Arg{
 			"title": utils.EscapeHTML(utils.ShortTitle(t.Title, 25)),
 		})
+	} else if wasLooping && r.FilePath() != "" {
+		statusText = F(cid, "cb_replaying")
 	}
 
 	statusMsg, err := c.SendTextMessage(cid, statusText, nil)
@@ -107,20 +152,42 @@ func streamEndHandler(
 	}
 
 	var filePath string
+	var dlErr error
 	if wasLooping && t != nil && r.FilePath() != "" {
 		filePath = r.FilePath()
 	} else {
-		filePath, err = platforms.Download(context.Background(), t, statusMsg)
+		// Download with smart retry in autoplay mode
+		const maxRetries = 5
+		const downloadTimeout = 60 * time.Second
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			dlCtx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+			filePath, dlErr = platforms.Download(dlCtx, t, statusMsg)
+			cancel()
+			if dlErr == nil {
+				break
+			}
+			if isAutoplay {
+				logger.Warnf("[Autoplay] Download failed (attempt %d/%d) for %q: %v — trying next candidate", attempt+1, maxRetries, t.Title, dlErr)
+				nextT := pickAutoplayCandidate(chatID, t)
+				if nextT == nil {
+					break
+				}
+				nextT.Requester = "🎵 ᴀᴜᴛᴏᴘʟᴀʏ"
+				t = nextT
+			} else {
+				break
+			}
+		}
 	}
 
-	if err != nil {
+	if dlErr != nil {
 		logger.Errorf(
 			"[onStreamEndHandler] Download failed for %s: %v",
 			t.URL,
-			err,
+			dlErr,
 		)
 		utils.EOR(c, statusMsg, F(cid, "stream_download_fail", locales.Arg{
-			"error": err.Error(),
+			"error": dlErr.Error(),
 		}), nil)
 		core.DropRoom(chatID)
 
@@ -142,3 +209,109 @@ func streamEndHandler(
 	statusMsg = sendNowPlaying(c, statusMsg, cid, r, t)
 	r.SetStatusMsg(statusMsg)
 }
+
+// ── Smart Autoplay Engine (Golden-Zone Relevance + Anti-Repeat Filter) ────────
+
+func tryAutoplay(chatID int64, r *core.RoomState) *state.Track {
+	if r == nil || !r.Autoplay() {
+		logger.Debugf("[Autoplay] Autoplay is disabled for chat %d", chatID)
+		return nil
+	}
+	return pickAutoplayCandidate(chatID, r.Track())
+}
+
+func pickAutoplayCandidate(chatID int64, cur *state.Track) *state.Track {
+	if cur == nil || cur.ID == "" {
+		logger.Warnf("[Autoplay] Current track is nil or empty for chat %d", chatID)
+		return nil
+	}
+
+	// Mark current track as played in session
+	apMarkPlayed(chatID, cur.ID)
+
+	var candidates []*state.Track
+
+	// ── Tier 1: YouTube Official Radio Mix (with proper "RD" prefix) ───────────
+	mixPlaylistID := cur.ID
+	if !strings.HasPrefix(mixPlaylistID, "RD") {
+		mixPlaylistID = "RD" + cur.ID
+	}
+
+	mix, err := platforms.GetYouTubeMixPlaylist(context.Background(), mixPlaylistID)
+	if err == nil && len(mix) > 0 {
+		for i, t := range mix {
+			// Top 15 songs in Radio Mix are the highest-quality relevant matches (Golden Zone)
+			if i >= 15 {
+				break
+			}
+			if t.ID != "" && t.ID != cur.ID && !apIsPlayed(chatID, t.ID) {
+				candidates = append(candidates, t)
+			}
+		}
+	}
+
+	// ── Tier 2: Smart Search Fallback (Exact Vibe / Artist Matching) ───────────
+	if len(candidates) == 0 {
+		cleanTitle := cleanSongTitleForSearch(cur.Title)
+		logger.Infof("[Autoplay] Radio mix empty for %s, falling back to smart search: %q", cur.Title, cleanTitle)
+		query := fmt.Sprintf("%s similar songs", cleanTitle)
+		if searchTracks, sErr := platforms.SearchTracks(query, false); sErr == nil && len(searchTracks) > 0 {
+			for _, t := range searchTracks {
+				if t.ID != "" && t.ID != cur.ID && !apIsPlayed(chatID, t.ID) {
+					candidates = append(candidates, t)
+				}
+			}
+		}
+	}
+
+	// ── Tier 3: History Reset (If all songs have been played, recycle cleanly) ──
+	if len(candidates) == 0 {
+		logger.Infof("[Autoplay] All candidates exhausted for chat %d, refreshing session history", chatID)
+		apClearChat(chatID)
+		apMarkPlayed(chatID, cur.ID)
+		if len(mix) > 1 {
+			for _, t := range mix {
+				if t.ID != "" && t.ID != cur.ID {
+					candidates = append(candidates, t)
+					if len(candidates) >= 5 {
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		logger.Warnf("[Autoplay] No candidates could be found for chat %d", chatID)
+		return nil
+	}
+
+	// ── Golden-Zone Selection: Pick strictly from Top 4 closest hit matches ────
+	maxPool := len(candidates)
+	if maxPool > 4 {
+		maxPool = 4
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(maxPool)))
+	var chosen *state.Track
+	if err != nil {
+		chosen = candidates[0]
+	} else {
+		chosen = candidates[n.Int64()]
+	}
+
+	// Record chosen song so it never repeats
+	apMarkPlayed(chatID, chosen.ID)
+	chosen.Requester = "🎵 ᴀᴜᴛᴏᴘʟᴀʏ"
+	chosen.IsAutoplay = true
+	logger.Infof("[Autoplay] Successfully picked Golden-Zone song: %q (%s) for chat %d", chosen.Title, chosen.ID, chatID)
+	return chosen
+}
+
+func cleanSongTitleForSearch(title string) string {
+	title = strings.Split(title, "|")[0]
+	title = strings.Split(title, "(")[0]
+	title = strings.Split(title, "[")[0]
+	return strings.TrimSpace(title)
+}
+

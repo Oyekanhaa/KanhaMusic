@@ -20,6 +20,7 @@ package modules
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"KanhaMusic/kanha/logger"
 
@@ -274,10 +275,28 @@ func handleAutoplaySkip(c *td.Client, m *td.Message, cplay bool) error {
 	r.SetLoop(0)
 	scheduleOldPlayingMessage(r)
 
-	path, err := platforms.Download(context.Background(), next, statusMsg)
-	if err != nil {
+	var path string
+	var dlErr error
+	const maxRetries = 5
+	const downloadTimeout = 60 * time.Second
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		dlCtx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+		path, dlErr = platforms.Download(dlCtx, next, statusMsg)
+		cancel()
+		if dlErr == nil {
+			break
+		}
+		logger.Warnf("[Autoplay] /askip download failed (attempt %d/%d) for %q: %v — trying next candidate", attempt+1, maxRetries, next.Title, dlErr)
+		nextT := pickAutoplayCandidate(chatID, next)
+		if nextT == nil {
+			break
+		}
+		next = nextT
+	}
+
+	if dlErr != nil {
 		txt := F(chatID, "stream_download_fail", locales.Arg{
-			"error": err.Error(),
+			"error": dlErr.Error(),
 		})
 		if statusMsg != nil {
 			utils.EOR(c, statusMsg, txt, nil)
@@ -308,3 +327,4 @@ func handleAutoplaySkip(c *td.Client, m *td.Message, cplay bool) error {
 
 	return nil
 }
+
