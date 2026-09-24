@@ -123,5 +123,5 @@ func (m *MeowApiPlatform) Download(
 		return "", errors.New("meowapi returned empty file")
 	}
 
-	return path, nil
+	return path, 
 }
