@@ -18,6 +18,7 @@ INSTALL_LOG="/tmp/install_$(date +%s).log"
 INSTALL_ALL=true
 INSTALL_DENO=false
 INSTALL_GO=false
+INSTALL_BUILD_TOOLS=false
 INSTALL_PYTHON=false
 INSTALL_PIP=false
 INSTALL_FFMPEG=false
@@ -81,6 +82,7 @@ show_help() {
 ${CYAN}${BOLD}Options:${RESET}
   -h, --help              Show this help message
   -a, --all               Install all components (default)
+  -b, --build-tools       Install build tools & C compiler (gcc, make, zlib-dev)
   -g, --go                Install Go only
   -d, --deno              Install Deno only
   -p, --python            Install Python only
@@ -111,6 +113,7 @@ parse_arguments() {
         case $1 in
             -h|--help)            show_help ;;
             -a|--all)             INSTALL_ALL=true ;;
+            -b|--build-tools)     INSTALL_BUILD_TOOLS=true; any_component=true ;;
             -g|--go)              INSTALL_GO=true;       any_component=true ;;
             -d|--deno)            INSTALL_DENO=true;     any_component=true ;;
             -p|--python)          INSTALL_PYTHON=true;   any_component=true ;;
@@ -139,6 +142,7 @@ should_install() {
     [[ "$INSTALL_ALL" == true ]] && return 0
 
     case "$component" in
+        build_tools) [[ "$INSTALL_BUILD_TOOLS" == true || "$INSTALL_GO" == true ]] && return 0 ;;
         go)       [[ "$INSTALL_GO"       == true ]] && return 0 ;;
         deno)     [[ "$INSTALL_DENO"     == true ]] && return 0 ;;
         python)   [[ "$INSTALL_PYTHON"   == true ]] && return 0 ;;
@@ -351,6 +355,44 @@ version_ge() {
     [[ "$lowest" == "$2" ]]
 }
 
+check_install_build_tools() {
+    should_install build_tools || return 0
+
+    print_step "Checking C/C++ build tools and development libraries..."
+
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        refresh_package_manager
+        if command -v apt >/dev/null 2>&1; then
+            print_info "Ensuring build-essential, gcc, and zlib1g-dev are installed..."
+            run_as_root "Installing build tools via apt" apt install -y build-essential gcc g++ make zlib1g-dev libssl-dev pkg-config 2>/dev/null || true
+        elif command -v dnf >/dev/null 2>&1; then
+            print_info "Ensuring development tools are installed..."
+            run_as_root "Installing build tools via dnf" dnf install -y gcc gcc-c++ make zlib-devel openssl-devel pkgconfig 2>/dev/null || true
+        elif command -v yum >/dev/null 2>&1; then
+            print_info "Ensuring development tools are installed..."
+            run_as_root "Installing build tools via yum" yum install -y gcc gcc-c++ make zlib-devel openssl-devel pkgconfig 2>/dev/null || true
+        elif command -v pacman >/dev/null 2>&1; then
+            print_info "Ensuring base-devel is installed..."
+            run_as_root "Installing build tools via pacman" pacman -S --noconfirm base-devel zlib openssl 2>/dev/null || true
+        fi
+
+        if command -v gcc >/dev/null 2>&1; then
+            print_success "C compiler (gcc) is ready: $(gcc --version 2>&1 | head -n1)"
+            return 0
+        else
+            print_soft_error "GCC compiler not found. CGO compilation may fail."
+            return 1
+        fi
+    elif [[ "$OS_TYPE" == "macos" ]]; then
+        if ! command -v clang >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1; then
+            print_info "Installing Xcode Command Line Tools..."
+            xcode-select --install 2>/dev/null || true
+        fi
+        print_success "Build tools checked"
+        return 0
+    fi
+}
+
 check_install_python() {
     should_install python || return 0
 
@@ -447,6 +489,7 @@ check_install_go() {
     case "$OS_TYPE" in
 
         linux)
+            local go_installed=false
             if command -v snap >/dev/null 2>&1; then
                 if [[ -n "$current_go" ]]; then
                     if snap list go >/dev/null 2>&1; then
@@ -462,21 +505,19 @@ check_install_go() {
                     print_info "Refreshing Go via snap..."
                     if run_as_root "Refreshing Go snap" snap refresh go; then
                         print_success "Go $(go version | awk '{print $3}') refreshed via snap"
-                        return 0
+                        go_installed=true
                     fi
                 else
                     print_info "Installing Go $GO_TARGET via snap..."
                     if run_as_root "Installing Go snap" snap install go --classic; then
                         print_success "Go $(go version | awk '{print $3}') installed via snap"
-                        return 0
+                        go_installed=true
                     fi
                 fi
+            fi
 
-                print_soft_error "Go snap install/refresh failed"
-                return 1
-
-            else
-                print_info "Installing Go $GO_TARGET via tarball..."
+            if [[ "$go_installed" == false ]]; then
+                print_info "Installing Go $GO_TARGET via official tarball..."
                 local archive="go${GO_TARGET}.linux-${ARCH_TYPE}.tar.gz"
                 local url="https://go.dev/dl/${archive}"
 
@@ -485,16 +526,21 @@ check_install_go() {
                     run_as_root "Extracting Go"   tar -C /usr/local -xzf "/tmp/${archive}"
                     rm -f "/tmp/${archive}"
                     update_path "/usr/local/go/bin" "Go"
+                    export PATH="/usr/local/go/bin:$PATH"
 
                     if command -v go >/dev/null 2>&1; then
                         print_success "Go $(go version | awk '{print $3}') installed via tarball"
                         return 0
+                    elif [[ -x /usr/local/go/bin/go ]]; then
+                        print_success "Go $(/usr/local/go/bin/go version | awk '{print $3}') installed at /usr/local/go/bin"
+                        return 0
                     fi
                 fi
 
-                print_soft_error "Go tarball installation failed"
+                print_soft_error "Go installation failed"
                 return 1
             fi
+            return 0
             ;;
 
         macos)
@@ -790,6 +836,11 @@ install_tdjson() {
                 if [[ ! -f "./libtdjson.so" && "$OS_TYPE" == "linux" ]]; then
                     ln -sf "$base_name" "./libtdjson.so"
                 fi
+                if [[ "$OS_TYPE" == "linux" ]]; then
+                    run_as_root "Installing TDLib to /usr/local/lib" cp "./${base_name}" /usr/local/lib/
+                    run_as_root "Symlinking /usr/local/lib/libtdjson.so" ln -sf "/usr/local/lib/${base_name}" /usr/local/lib/libtdjson.so
+                    run_as_root "Running ldconfig" ldconfig 2>/dev/null || true
+                fi
                 print_success "TDLib ($base_name) installed"
                 rm -rf "$archive" tmp_tdjson
                 return 0
@@ -820,11 +871,13 @@ print_summary() {
 
     local comp status ver color
 
+    _check_gcc()    { command -v gcc    >/dev/null 2>&1; }
     _check_go()     { command -v go     >/dev/null 2>&1; }
     _check_deno()   { command -v deno   >/dev/null 2>&1; }
     _check_ffmpeg() { command -v ffmpeg >/dev/null 2>&1; }
     _check_ytdlp()  { command -v yt-dlp >/dev/null 2>&1; }
 
+    _ver_gcc()    { gcc --version 2>/dev/null | head -n1 | awk '{print $3}'; }
     _ver_go()     { go version     2>/dev/null | head -n1 | awk '{print $3}' | sed 's/go//'; }
     _ver_deno()   { deno --version 2>/dev/null | head -n1 | awk '{print $2}'; }
     _ver_ffmpeg() { ffmpeg -version 2>/dev/null | head -n1 | awk '{print $3}'; }
@@ -844,6 +897,7 @@ print_summary() {
         printf "%-12s | ${color}%-12s${RESET} | %-15s\n" "$label" "$status" "$ver"
     }
 
+    _print_row "Build Tools" "build_tools" _check_gcc _ver_gcc
     _print_row "Go"     "go"     _check_go     _ver_go
     _print_row "Deno"   "deno"   _check_deno   _ver_deno
     _print_row "FFmpeg" "ffmpeg" _check_ffmpeg _ver_ffmpeg
@@ -902,6 +956,7 @@ main() {
     [[ "$QUIET_MODE" == false ]] && echo -e "${CYAN}Installing selected components...${RESET}\n"
 
     ensure_download_tool
+    check_install_build_tools
     check_install_deno
     check_install_python
     check_install_pip
