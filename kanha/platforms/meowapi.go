@@ -37,6 +37,10 @@ import (
 const (
 	audioDownloadTimeout = 300 * time.Second
 	videoDownloadTimeout = 600 * time.Second
+
+	// minValidDownloadBytes matches the upstream Python client's floor for
+	// telling a real media file apart from a short error response.
+	minValidDownloadBytes = 10_000
 )
 
 const PlatformMeowApi state.PlatformName = "MeowApi"
@@ -100,6 +104,7 @@ func (m *MeowApiPlatform) Download(
 
 	r, err := rc.R().
 		SetContext(dctx).
+		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		SetResponseSaveFileName(path).
 		Get(streamURL)
 	if err != nil {
@@ -119,8 +124,13 @@ func (m *MeowApiPlatform) Download(
 		), config.MeowAPIKey)
 	}
 
-	if !fileExists(path) {
-		return "", errors.New("meowapi returned empty file")
+	// A 200 with a tiny body is almost always an error payload (JSON/HTML)
+	// rather than real media — reject it instead of handing a corrupt file
+	// to the caller, mirroring the upstream client's size floor.
+	info, statErr := os.Stat(path)
+	if statErr != nil || info.Size() < minValidDownloadBytes {
+		os.Remove(path)
+		return "", errors.New("meowapi returned an invalid or empty file")
 	}
 
 	return path, nil
