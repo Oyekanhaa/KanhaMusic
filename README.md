@@ -86,53 +86,36 @@ Deploy **KanhaMusic** in under 60 seconds on your favorite cloud provider:
   cd KanhaMusic
 
   # 2. Run automated dependency installer
-  chmod +x install.sh
   bash install.sh
 
   # 3. Setup configuration environment
-  cp sample.env .env
-  nano .env  # Add your API_ID, TOKEN, MONGO_DB_URI, etc.
+  cp sample.env .env  # Edit your API_ID, TOKEN, etc.
+  nano .env
 
-  # 4. Compile and Run
-  CGO_ENABLED=1 go build -v -trimpath -ldflags="-w -s" -o app ./cmd/app/
-  ./app
+  # 4. Tidy & Run
+  go mod tidy
+  go run ./cmd/app
   ```
 
   ### 🔄 Running 24/7 in Background
-  **Method 1: Using Tmux (Recommended)**
+  **Method 1: Using Automated Runner Script**
   ```bash
-  tmux new -s kanhamusic
-  ./app
-  # Press Ctrl+B then D to detach. Re-attach anytime with: tmux a -t kanhamusic
+  # Auto-builds, exports library paths, and auto-restarts on crash
+  bash start.sh
   ```
 
-  **Method 2: Using Systemd Service**
+  **Method 2: Using Automated Systemd Service**
   ```bash
-  sudo nano /etc/systemd/system/kanhamusic.service
-  ```
-  Paste the following unit configuration:
-  ```ini
-  [Unit]
-  Description=KanhaMusic Telegram Bot
-  After=network.target
-
-  [Service]
-  Type=simple
-  User=ubuntu
-  WorkingDirectory=/home/ubuntu/KanhaMusic
-  ExecStart=/home/ubuntu/KanhaMusic/app
-  Restart=always
-  RestartSec=5
-
-  [Install]
-  WantedBy=multi-user.target
-  ```
-  Enable and start the service:
-  ```bash
-  sudo systemctl daemon-reload
-  sudo systemctl enable kanhamusic
+  sudo bash setup_service.sh
   sudo systemctl start kanhamusic
   sudo systemctl status kanhamusic
+  ```
+
+  **Method 3: Using Tmux**
+  ```bash
+  tmux new -s kanhamusic
+  go run ./cmd/app
+  # Press Ctrl+B then D to detach. Re-attach anytime with: tmux a -t kanhamusic
   ```
 </details>
 
