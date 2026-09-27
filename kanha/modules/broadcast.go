@@ -403,7 +403,7 @@ func (bm *broadcastManager) send(
 		)
 		if ferr != nil {
 			err = ferr
-		} else if len(msgs.Messages) > 0 {
+		} else if msgs != nil && len(msgs.Messages) > 0 {
 			sent = &msgs.Messages[0]
 		}
 	} else {
@@ -477,6 +477,12 @@ func (bm *broadcastManager) updateProgress(
 	progressMsg *td.Message,
 	stats *BroadcastStats,
 ) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorf("Broadcast progress updater panic recovered: %v", r)
+		}
+	}()
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
