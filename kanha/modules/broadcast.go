@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -362,11 +361,11 @@ func (bm *broadcastManager) run(
 		props, perr := c.GetMessageProperties(m.ChatID(), rid)
 		switch {
 		case perr != nil:
-			fmt.Fprintf(&stats.Errors, "[preflight] GetMessageProperties failed: %v\n", perr)
+			logger.Warnf("[broadcast] GetMessageProperties failed: %v", perr)
 		case !props.CanBeForwarded && !props.CanBeCopied:
-			fmt.Fprintf(&stats.Errors, "[preflight] replied message cannot be forwarded or copied (protected content)\n")
+			logger.Warnf("[broadcast] replied message cannot be forwarded or copied (protected content)")
 		case !props.CanBeForwarded:
-			fmt.Fprintf(&stats.Errors, "[preflight] replied message cannot be forwarded, only copied (use -copy)\n")
+			logger.Warnf("[broadcast] replied message cannot be forwarded, only copied (use -copy)")
 		}
 	}
 
@@ -420,15 +419,6 @@ func (bm *broadcastManager) send(
 			[]int64{m.ReplyToMessageID()},
 			&td.ForwardMessagesOpts{SendCopy: flags.Copy},
 		)
-		if ferr == nil && (msgs == nil || len(msgs.Messages) == 0 || msgs.Messages[0].Id == 0) {
-			// Null result: retry once in the opposite mode (forward <-> copy).
-			msgs, ferr = c.ForwardMessages(
-				targetID,
-				m.ChatID(),
-				[]int64{m.ReplyToMessageID()},
-				&td.ForwardMessagesOpts{SendCopy: !flags.Copy},
-			)
-		}
 		if ferr != nil {
 			err = ferr
 		} else if msgs == nil || len(msgs.Messages) == 0 || msgs.Messages[0].Id == 0 {
@@ -560,23 +550,9 @@ func (bm *broadcastManager) finalize(
 	stats.mu.Lock()
 	stats.Finished = true
 	text := formatBroadcastProgress(stats, true, progressMsg.ChatID())
-	errs := stats.Errors.String()
 	stats.mu.Unlock()
 
 	_, _ = progressMsg.EditText(c, text, nil)
-
-	if errs == "" {
-		return
-	}
-
-	const file = "broadcast_errors.txt"
-	if err := os.WriteFile(file, []byte(errs), 0o600); err != nil {
-		logger.Errorf("Failed to write broadcast errors: %v", err)
-		return
-	}
-	defer os.Remove(file)
-
-	_, _ = progressMsg.ReplyDocument(c, &td.InputFileLocal{Path: file}, nil)
 }
 
 func formatBroadcastProgress(
