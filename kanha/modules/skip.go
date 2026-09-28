@@ -325,6 +325,8 @@ func handleAutoplaySkip(c *td.Client, m *td.Message, cplay bool) error {
 		r.SetStatusMsg(statusMsg)
 	}
 
+	go sendAutoplayLogs(c, chatID, next, statusMsg)
+
 	return nil
 }
 
