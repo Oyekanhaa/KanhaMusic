@@ -238,6 +238,54 @@ func sendPlayLogs(c *td.Client, m *td.Message, track *state.Track, queued bool) 
 	}
 }
 
+// sendAutoplayLogs posts the same "playback started" log as sendPlayLogs, but
+// for tracks started by autoplay, where there is no user command message.
+// statusMsg is the bot's own message in the chat (used only for a public link).
+func sendAutoplayLogs(c *td.Client, chatID int64, track *state.Track, statusMsg *td.Message) {
+	if track == nil || config.LoggerID == 0 || config.LoggerID == chatID || !isLoggerEnabled() {
+		return
+	}
+
+	groupName := "N/A"
+	groupLink := ""
+	if chat, err := c.GetChat(chatID); err == nil && chat != nil {
+		groupName = chat.Title
+		if statusMsg != nil {
+			if l, lerr := statusMsg.GetLink(c); lerr == nil && l != nil && l.IsPublic {
+				groupLink = l.Link
+			}
+		}
+	}
+
+	header := F(chatID, "logger_playback_started")
+
+	var sb strings.Builder
+	sb.WriteString("🎵 ")
+	if groupLink != "" {
+		fmt.Fprintf(&sb, "<b><a href=\"%s\">%s</a></b>\n\n", groupLink, header)
+	} else {
+		fmt.Fprintf(&sb, "<b><u>%s</u></b>\n\n", header)
+	}
+
+	sb.WriteString(F(chatID, "logger_playback_template", locales.Arg{
+		"track_url":       track.URL,
+		"track":           utils.EscapeHTML(utils.ShortTitle(track.Title)),
+		"source":          string(track.Source),
+		"group":           groupName,
+		"group_id":        chatID,
+		"requested_by":    track.Requester,
+		"requested_by_id": "autoplay",
+	}))
+
+	if _, err := core.Bot.SendTextMessage(
+		config.LoggerID,
+		sb.String(),
+		&td.SendTextMessageOpts{ParseMode: "HTML", DisableWebPagePreview: true},
+	); err != nil {
+		logger.Error("failed to send autoplay logger msg: " + err.Error())
+	}
+}
+
 func WithBlacklistCallback(
 	handler func(*td.Client, *td.UpdateNewCallbackQuery) error,
 ) func(*td.Client, *td.UpdateNewCallbackQuery) error {
