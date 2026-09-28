@@ -1,6 +1,7 @@
 package gotdbot
 
 import (
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -134,29 +135,38 @@ func (m *ClientManager) receiver() {
 		default:
 			res := tdjson.Receive(0.1)
 			if res != "" {
-				data := []byte(res)
-				obj, clientId, extra, err := UnmarshalWithClient(data)
-				if err != nil {
-					continue
-				}
-				if obj == nil {
-					continue
-				}
-
-				m.mu.RLock()
-				c, ok := m.clients[clientId]
-				m.mu.RUnlock()
-
-				if ok {
-					if extra != "" {
-						if ch, loaded := c.pendingRequests.LoadAndDelete(extra); loaded {
-							ch.(chan TlObject) <- obj
-							continue
-						}
-					}
-					c.updates <- obj
-				}
+				m.handleRaw(res)
 			}
 		}
 	}
+}
+
+// handleRaw decodes and dispatches one raw TDLib payload. A panic caused by a
+// malformed payload is recovered so it can never kill the receiver goroutine.
+func (m *ClientManager) handleRaw(res string) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("meow: recovered panic while handling update: %v", r)
+		}
+	}()
+
+	obj, clientId, extra, err := UnmarshalWithClient([]byte(res))
+	if err != nil || obj == nil {
+		return
+	}
+
+	m.mu.RLock()
+	c, ok := m.clients[clientId]
+	m.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	if extra != "" {
+		if ch, loaded := c.pendingRequests.LoadAndDelete(extra); loaded {
+			ch.(chan TlObject) <- obj
+			return
+		}
+	}
+	c.updates <- obj
 }
