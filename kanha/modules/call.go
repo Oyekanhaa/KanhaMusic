@@ -208,6 +208,10 @@ func streamEndHandler(
 
 	statusMsg = sendNowPlaying(c, statusMsg, cid, r, t)
 	r.SetStatusMsg(statusMsg)
+
+	if isAutoplay {
+		go sendAutoplayLogs(c, cid, t, statusMsg)
+	}
 }
 
 // ── Smart Autoplay Engine (Golden-Zone Relevance + Anti-Repeat Filter) ────────
