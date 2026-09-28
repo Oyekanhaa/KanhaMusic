@@ -357,6 +357,19 @@ func (bm *broadcastManager) run(
 		bm.finalize(c, progressMsg, stats)
 	}()
 
+	// Preflight: explain up front why forwarding may fail (goes to errors.txt).
+	if rid := m.ReplyToMessageID(); rid > 0 {
+		props, perr := c.GetMessageProperties(m.ChatID(), rid)
+		switch {
+		case perr != nil:
+			fmt.Fprintf(&stats.Errors, "[preflight] GetMessageProperties failed: %v\n", perr)
+		case !props.CanBeForwarded && !props.CanBeCopied:
+			fmt.Fprintf(&stats.Errors, "[preflight] replied message cannot be forwarded or copied (protected content)\n")
+		case !props.CanBeForwarded:
+			fmt.Fprintf(&stats.Errors, "[preflight] replied message cannot be forwarded, only copied (use -copy)\n")
+		}
+	}
+
 	targets := make([]broadcastTarget, 0, len(chats)+len(users))
 	for _, id := range chats {
 		targets = append(targets, broadcastTarget{id: id})
@@ -394,6 +407,12 @@ func (bm *broadcastManager) send(
 		err  error
 	)
 
+	// TDLib must know the target chat before we can send/forward to it.
+	if cerr := ensureBroadcastChat(c, targetID); cerr != nil {
+		logger.Errorf("Broadcast failed for %d: %v", targetID, cerr)
+		return cerr
+	}
+
 	if m.ReplyToMessageID() > 0 {
 		msgs, ferr := c.ForwardMessages(
 			targetID,
@@ -401,6 +420,15 @@ func (bm *broadcastManager) send(
 			[]int64{m.ReplyToMessageID()},
 			&td.ForwardMessagesOpts{SendCopy: flags.Copy},
 		)
+		if ferr == nil && (msgs == nil || len(msgs.Messages) == 0 || msgs.Messages[0].Id == 0) {
+			// Null result: retry once in the opposite mode (forward <-> copy).
+			msgs, ferr = c.ForwardMessages(
+				targetID,
+				m.ChatID(),
+				[]int64{m.ReplyToMessageID()},
+				&td.ForwardMessagesOpts{SendCopy: !flags.Copy},
+			)
+		}
 		if ferr != nil {
 			err = ferr
 		} else if msgs == nil || len(msgs.Messages) == 0 || msgs.Messages[0].Id == 0 {
@@ -431,6 +459,20 @@ func (bm *broadcastManager) send(
 		}
 	}
 	return nil
+}
+
+// ensureBroadcastChat makes sure TDLib has the chat loaded. Private chats that
+// are not in TDLib's local database yet (common for users stored in our DB
+// only) are created on the fly; otherwise forward/send fails with
+// "Chat to forward messages to not found".
+func ensureBroadcastChat(c *td.Client, id int64) error {
+	if _, err := c.GetChat(id); err == nil {
+		return nil
+	} else if id <= 0 {
+		return err
+	}
+	_, err := c.CreatePrivateChat(id, nil)
+	return err
 }
 
 // isBroadcastSkipError reports errors that are expected for removed/blocked targets.
