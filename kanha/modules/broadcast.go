@@ -356,9 +356,19 @@ func (bm *broadcastManager) run(
 		bm.finalize(c, progressMsg, stats)
 	}()
 
-	// Preflight: explain up front why forwarding may fail (goes to errors.txt).
+	// Preflight: log up front why forwarding may fail.
 	if rid := m.ReplyToMessageID(); rid > 0 {
 		props, perr := c.GetMessageProperties(m.ChatID(), rid)
+		if perr == nil {
+			outgoing := false
+			if rm, gerr := c.GetMessage(m.ChatID(), rid); gerr == nil && rm != nil {
+				outgoing = rm.IsOutgoing
+			}
+			logger.Infof(
+				"[broadcast] replied msg=%d chat=%d can_be_forwarded=%v can_be_copied=%v sent_by_bot=%v copy_flag=%v",
+				rid, m.ChatID(), props.CanBeForwarded, props.CanBeCopied, outgoing, flags.Copy,
+			)
+		}
 		switch {
 		case perr != nil:
 			logger.Warnf("[broadcast] GetMessageProperties failed: %v", perr)
