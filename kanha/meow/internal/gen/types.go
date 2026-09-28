@@ -174,7 +174,10 @@ func generateObjects(types []TLType, classes map[string]*TLClass) {
 			sb.WriteString("\t}{\n")
 			sb.WriteString("\t\tAlias: (*Alias)(t),\n")
 			sb.WriteString("\t}\n\n")
-			sb.WriteString("\tif err := json.Unmarshal(data, &aux); err != nil {\n")
+			sb.WriteString("\tif string(data) == \"null\" {\n")
+			sb.WriteString("\t\treturn nil\n")
+			sb.WriteString("\t}\n")
+			sb.WriteString("\tif err := json.Unmarshal(data, aux); err != nil {\n")
 			sb.WriteString("\t\treturn err\n")
 			sb.WriteString("\t}\n\n")
 
