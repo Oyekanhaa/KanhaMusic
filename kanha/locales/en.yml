@@ -378,6 +378,23 @@ flood_seconds: "⏳ sʟσᴡ ᴅσᴡη! ᴛʀʏ ᴧɢᴧɪη ɪη {duration} s�
 
 flood_minutes: "{emoji:⏳} ᴘʟєᴧsє ᴡᴧɪᴛ {duration} ᴍɪηᴜᴛєs ʙєғσʀє ᴜsɪηɢ ᴛʜɪs ᴄσᴍᴍᴧηᴅ ᴧɢᴧɪη."
 
+bug_usage: "{emoji:⚠️} <b>ᴘʟєᴧsє ᴅєsᴄʀɪʙє ᴛʜє ʙᴜɢ.</b>\n\nᴜsᴧɢє: {cmd} &lt;ᴘʀσʙʟєᴍ&gt; σʀ ʀєᴘʟʏ ᴛσ ᴧ ᴍєssᴧɢє."
+
+bug_thanks: "{emoji:✅} <b>ᴛʜᴧηᴋ ʏσᴜ ғσʀ ʏσᴜʀ ʙᴜɢ ʀєᴘσʀᴛ!</b>\nɪᴛ ʜᴧs ʙєєη sєηᴛ ᴛσ ᴛʜє ᴅєᴠєʟσᴘєʀs."
+
+bug_private_chat: "ᴘʀɪᴠᴧᴛє ᴄʜᴧᴛ"
+
+bug_reply_only: "<i>ʀєᴘʟʏ ʀєᴘσʀᴛ — sєє ғσʀᴡᴧʀᴅєᴅ ᴍєssᴧɢє.</i>"
+
+bug_report_format: |
+  {emoji:🐞} <b>ηєᴡ ʙᴜɢ ʀєᴘσʀᴛ</b>
+
+  <b>ғʀσᴍ:</b> {user} (<code>{user_id}</code>)
+  <b>ᴄʜᴧᴛ:</b> {chat} (<code>{chat_id}</code>)
+
+  <b>ʀєᴘσʀᴛ:</b>
+  <blockquote>{report}</blockquote>
+
 help_private_only: "{emoji:🤖} ʜɪ! ғσʀ ʙσᴛ ʜєʟᴘ ᴧηᴅ ᴄσᴍᴍᴧηᴅs, ᴘʟєᴧsє ᴅᴍ ᴍє ᴅɪʀєᴄᴛʟʏ — ɪ'ᴍ ᴍσʀє ʀєsᴘσηsɪᴠє ɪη ᴘʀɪᴠᴧᴛє ᴄʜᴧᴛs!"
 
 help_main: "<blockquote><b>🔮 єxᴘʟσʀє ᴛʜє ᴄσᴍᴘʟєᴛє ᴄσᴍᴍᴧηᴅ ɪηᴅєx ʙєʟσᴡ</b></blockquote>\n\n<blockquote><b>• ᴧᴄᴄєss єxᴘєʀᴛ ᴛєᴄʜηɪᴄᴧʟ ɢᴜɪᴅᴧηᴄє &amp; ʀєᴧʟ-ᴛɪᴍє sᴜᴘᴘσʀᴛ</b></blockquote>\n<blockquote><b>• єxєᴄᴜᴛє ᴧʟʟ ᴄσᴍᴍᴧηᴅs ᴜsɪηɢ sᴛᴧηᴅᴧʀᴅ ᴘʀєғɪx ➜</b></blockquote>\n"
