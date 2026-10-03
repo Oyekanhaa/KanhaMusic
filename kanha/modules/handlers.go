@@ -188,6 +188,7 @@ func Init(bot *td.Client, assistants *core.AssistantManager) {
 	bot.OnCommand("authlist", WithBlacklistMessage(authListHandler))
 	bot.OnCommand("authusers", WithBlacklistMessage(authListHandler))
 	bot.OnCommand("privacy", WithBlacklistMessage(privacyHandler))
+	bot.OnCommand("bug", WithBlacklistMessage(bugHandler))
 	bot.OnCommand("cmddelete", WithBlacklistMessage(cmdDeleteHandler))
 	bot.OnCommand("commanddelete", WithBlacklistMessage(cmdDeleteHandler))
 	bot.OnCommand("creload", WithBlacklistMessage(creloadHandler))
