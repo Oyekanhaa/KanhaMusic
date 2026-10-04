@@ -60,7 +60,7 @@ func (m *MeowApiPlatform) CanDownload(source state.PlatformName) bool {
 	if config.MeowAPIURL == "" || config.MeowAPIKey == "" {
 		return false
 	}
-	return source == PlatformYouTube
+	return source == PlatformYouTube || source == PlatformSpotify || source == PlatformDeezer
 }
 
 func (m *MeowApiPlatform) Download(
@@ -91,6 +91,12 @@ func (m *MeowApiPlatform) Download(
 		"%s/stream/%s?key=%s&type=%s&quality=%s",
 		config.MeowAPIURL, track.ID, config.MeowAPIKey, dtype, quality,
 	)
+	switch track.Source {
+	case PlatformSpotify:
+		streamURL = fmt.Sprintf("%s/stream/spotify/%s?key=%s", config.MeowAPIURL, track.ID, config.MeowAPIKey)
+	case PlatformDeezer:
+		streamURL = fmt.Sprintf("%s/stream/deezer/%s?key=%s", config.MeowAPIURL, track.ID, config.MeowAPIKey)
+	}
 
 	r, err := rc.R().
 		SetContext(dctx).
